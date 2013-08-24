@@ -129,12 +129,13 @@ namespace Couchnode
         bool isUsingHashtableParams(void) const {
             return useHashtableParams;
         }
+        bool isShutdown() const { return shutdown_; }	
     protected:
         bool connected;
         bool useHashtableParams;
         lcb_t instance;
         lcb_error_t lastError;
-
+        bool shutdown_;
         // @todo why not use a std::queue?
         typedef std::vector<Operation*> QueuedOperationList;
         QueuedOperationList queuedOperations;

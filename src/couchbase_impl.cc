@@ -56,7 +56,7 @@ v8::Handle<v8::Value> Couchnode::ThrowIllegalArgumentsException(void)
 
 CouchbaseImpl::CouchbaseImpl(lcb_t inst) :
     ObjectWrap(), connected(false), useHashtableParams(false),
-    instance(inst), lastError(LCB_SUCCESS)
+    instance(inst), lastError(LCB_SUCCESS), shutdown_(false)
 
 {
     lcb_set_cookie(instance, reinterpret_cast<void *>(this));
@@ -547,19 +547,30 @@ v8::Handle<v8::Value> CouchbaseImpl::DeleteDesignDoc(const v8::Arguments &args)
 }
 
 extern "C" {
-    static void libuv_shutdown_cb(uv_timer_t* t, int) {
+    static void libuv_generic_close_cb(uv_handle_t *handle) {
+        delete handle;
+    }
+
+    static void libuv_shutdown_cb(uv_idle_t* idle, int) {
         ScopeLogger sl("libuv_shutdown_cb");
-        lcb_t instance = (lcb_t)t->data;
+        lcb_t instance = (lcb_t)idle->data;
         lcb_destroy(instance);
-        delete t;
+        uv_idle_stop(idle);
+        uv_close((uv_handle_t*)idle, libuv_generic_close_cb);
     }
 }
 
 void CouchbaseImpl::shutdown(void)
 {
-    uv_timer_t *timer = new uv_timer_t;
-    uv_timer_init(uv_default_loop(), timer);
-    timer->data = instance;
-    instance = NULL;
-    uv_timer_start(timer, libuv_shutdown_cb, 10, 0);
+    if (shutdown_) {
+        fprintf(stderr, "Instance already closing/closed\n"); 
+        return;
+    }   
+    uv_idle_t *idle = new uv_idle_t;
+    memset(idle, 0, sizeof(*idle));
+    uv_idle_init(uv_default_loop(), idle);
+    idle->data = instance;
+    lcb_create(&instance, NULL);
+    shutdown_ = true;
+    uv_idle_start(idle, libuv_shutdown_cb);
 }
